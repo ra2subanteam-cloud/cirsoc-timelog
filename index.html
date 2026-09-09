@@ -131,6 +131,27 @@
                         </tbody>
                     </table>
                 </div>
+
+                <!-- ตารางสรุปชั่วโมงรายบุคคล -->
+                <div class="mt-6 bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                    <div class="px-6 py-4 bg-gray-50 border-b border-gray-200">
+                        <h2 class="text-lg font-semibold text-gray-800 flex items-center">
+                            <svg class="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z"></path></svg>
+                            สรุปชั่วโมงรายบุคคล
+                        </h2>
+                    </div>
+                    <table class="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left font-semibold text-gray-600 tracking-wider">ชื่อ-สกุล</th>
+                                <th class="px-6 py-3 text-center font-semibold text-gray-600 tracking-wider">ชั่วโมงรวม</th>
+                            </tr>
+                        </thead>
+                        <tbody id="summaryTableBody" class="bg-white divide-y divide-gray-100">
+                            <!-- ข้อมูลสรุปจะถูกเพิ่มที่นี่ -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
             
         </div>
@@ -215,6 +236,8 @@
         });
 
         function renderTable() {
+            renderSummary();
+
             const tbody = document.getElementById('logTableBody');
             tbody.innerHTML = ''; 
 
@@ -243,6 +266,33 @@
             });
 
             document.getElementById('totalHoursDisplay').innerText = totalHours + ' ชม.';
+        }
+
+        function renderSummary() {
+            const tbody = document.getElementById('summaryTableBody');
+            tbody.innerHTML = '';
+
+            if (workLogs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="2" class="px-6 py-8 text-center text-gray-400">ยังไม่มีข้อมูล</td></tr>`;
+                return;
+            }
+
+            const totals = {};
+            workLogs.forEach((log) => {
+                totals[log.name] = (totals[log.name] || 0) + Number(log.hours || 0);
+            });
+
+            const sortedNames = Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
+
+            sortedNames.forEach((name) => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-cirsoc-50 transition duration-150';
+                tr.innerHTML = `
+                    <td class="px-6 py-3 font-medium text-cirsoc-900">${escapeHTML(name)}</td>
+                    <td class="px-6 py-3 text-center font-bold text-gray-800">${totals[name]}</td>
+                `;
+                tbody.appendChild(tr);
+            });
         }
 
         function escapeHTML(str) {
