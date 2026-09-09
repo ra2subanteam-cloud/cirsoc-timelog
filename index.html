@@ -158,8 +158,13 @@
     </div>
 
     <script>
-        // นำ URL ที่ได้จาก Google Apps Script มาวางในเครื่องหมายคำพูดด้านล่างนี้ครับ
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxdi2Mo_YExPh0_zgrPVFLxjNMmV7rsjF2AgXw_pDv9Q-oI1-w2_cQnRDUQ2bX-YZaj/exec';
+        // ตั้งค่าการเชื่อมต่อกับ Google Form + Google Sheets (เผยแพร่เป็น CSV)
+        const FORM_ACTION_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSeFHmoWdvJOQf_5OngmT2skc6KZ-Uap16nRiEk1VP20QF3q4Q/formResponse';
+        const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQDecBnHTeY2qOOv8II7of2ey4VUCl2o-wGQvf979bXsciZG4YlEIq19lhqMOV-wKNSgMNYiTTo4QOd/pub?gid=272032360&single=true&output=csv';
+        const ENTRY_NAME = 'entry.1364409852';
+        const ENTRY_DATE = 'entry.239068070';
+        const ENTRY_HOURS = 'entry.1490434115';
+        const ENTRY_DETAILS = 'entry.1554650453';
 
         let workLogs = [];
 
@@ -169,15 +174,41 @@
             fetchLogsFromSheet();
         });
 
-        // ดึงข้อมูลล่าสุดจาก Google Sheets มาแสดง (ให้ทุกคนเห็นตารางเดียวกัน)
+        // แยกบรรทัด CSV แบบรองรับข้อความที่มีจุลภาคอยู่ในเครื่องหมายคำพูด (เช่น รายละเอียดงาน)
+        function parseCSV(text) {
+            const rows = [];
+            let row = [], field = '', inQuotes = false;
+            for (let i = 0; i < text.length; i++) {
+                const c = text[i], next = text[i + 1];
+                if (inQuotes) {
+                    if (c === '"' && next === '"') { field += '"'; i++; }
+                    else if (c === '"') { inQuotes = false; }
+                    else { field += c; }
+                } else {
+                    if (c === '"') inQuotes = true;
+                    else if (c === ',') { row.push(field); field = ''; }
+                    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+                    else if (c === '\r') { /* ข้าม */ }
+                    else { field += c; }
+                }
+            }
+            if (field.length || row.length) { row.push(field); rows.push(row); }
+            return rows.filter(r => r.length > 1 || r[0] !== '');
+        }
+
+        // ดึงข้อมูลล่าสุดจาก Google Sheets (ที่เผยแพร่เป็น CSV) มาแสดง
         function fetchLogsFromSheet() {
             const tbody = document.getElementById('logTableBody');
             tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-12 text-center text-gray-400">กำลังโหลดข้อมูล...</td></tr>`;
 
-            fetch(GOOGLE_SCRIPT_URL)
-                .then(res => res.json())
-                .then(data => {
-                    workLogs = Array.isArray(data) ? data : [];
+            fetch(CSV_URL + '&_=' + Date.now())
+                .then(res => res.text())
+                .then(text => {
+                    const rows = parseCSV(text);
+                    rows.shift(); // ตัดแถวหัวตาราง (Timestamp, ชื่อ-สกุล, ...)
+                    workLogs = rows
+                        .filter(r => r[1])
+                        .map(r => ({ name: r[1], date: r[2], hours: parseFloat(r[3]), details: r[4] }));
                     renderTable();
                 })
                 .catch(error => {
@@ -187,11 +218,6 @@
 
         document.getElementById('workLogForm').addEventListener('submit', function(e) {
             e.preventDefault();
-            
-            if (GOOGLE_SCRIPT_URL === 'วางลิงก์ที่นี่' || GOOGLE_SCRIPT_URL === '') {
-                alert("กรุณาใส่ลิงก์ Google Apps Script ในโค้ดก่อนทำการบันทึกข้อมูลครับ");
-                return;
-            }
 
             const btn = document.getElementById('submitBtn');
             const btnText = btn.querySelector('span');
@@ -204,29 +230,30 @@
             const hours = parseFloat(document.getElementById('workHours').value);
             const details = document.getElementById('workDetails').value.trim();
 
-            const data = {
-                name: name,
-                date: date,
-                hours: hours,
-                details: details
-            };
+            const body = new URLSearchParams();
+            body.append(ENTRY_NAME, name);
+            body.append(ENTRY_DATE, date);
+            body.append(ENTRY_HOURS, hours);
+            body.append(ENTRY_DETAILS, details);
 
-            fetch(GOOGLE_SCRIPT_URL, {
+            fetch(FORM_ACTION_URL, {
                 method: 'POST',
-                body: JSON.stringify(data),
-                mode: 'no-cors'
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString()
             }).then(() => {
-                // ดึงข้อมูลล่าสุดจาก Sheets กลับมาแสดง แทนการเก็บไว้แค่ในเครื่อง
-                fetchLogsFromSheet();
+                // แสดงผลทันทีที่เครื่องนี้ก่อน (Google Sheets ที่เผยแพร่เป็น CSV อาจอัปเดตช้าไม่กี่วินาที/นาที)
+                workLogs.push({ name, date, hours, details });
+                renderTable();
 
                 document.getElementById('workHours').value = '';
                 document.getElementById('workDetails').value = '';
-                
+
                 btn.disabled = false;
                 btnText.innerText = 'บันทึกข้อมูล';
                 btn.classList.remove('opacity-75', 'cursor-not-allowed');
-                
-                showToast("บันทึกข้อมูลลง Google Sheets สำเร็จ!");
+
+                showToast("บันทึกข้อมูลสำเร็จ! (ตารางรวมของทุกคนอาจอัปเดตช้าสักครู่ กด F5 ได้ถ้าอยากเช็ค)");
             }).catch(error => {
                 alert("เกิดข้อผิดพลาดในการส่งข้อมูล: " + error);
                 btn.disabled = false;
